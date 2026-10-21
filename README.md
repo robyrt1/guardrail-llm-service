@@ -88,7 +88,7 @@ docker exec -it ollama ollama pull qwen2.5:7b
 ### 1. Clonar o repositório e instalar dependências
 
 ```bash
-git clone https://github.com/seu-usuario/guardrail-llm-service.git
+git clone https://github.com/robyrt1/guardrail-llm-service.git
 cd guardrail-llm-service
 npm install
 
