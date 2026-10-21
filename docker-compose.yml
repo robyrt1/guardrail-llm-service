@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: guardrail-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - OLLAMA_BASE_URL=http://ollama:11434
+    networks:
+      - ai-network
+
+networks:
+  ai-network:
+    external: true
