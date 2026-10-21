@@ -1,98 +1,241 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# NestJS Toxicity Guardrail with TensorFlow.js & Ollama
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Edge Guardrail corporativo desenvolvido em **NestJS** para interceptar, moderar e bloquear prompts maliciosos, ofensivos ou tóxicos em memória utilizando **TensorFlow.js**, antes que atinjam a camada de orquestração do **LangChain.js** e o modelo de linguagem local no **Ollama**.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## 🎯 Objetivo Arquitetural
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Em sistemas orientados a GenAI, enviar qualquer entrada diretamente para inferência de LLMs gera desperdício de recursos computacionais (VRAM/CPU), latência desnecessária e custos operacionais elevados com provedores externos (FinOps).
 
-## Project setup
+Este projeto introduz um **curto-circuito em nível de infraestrutura de aplicação**:
 
-```bash
-$ npm install
+* **Requisição Tóxica:** Interceptada em dezenas de milissegundos localmente pelo modelo Toxicity do TF.js. A execução é abortada no Guard do NestJS com status `400 Bad Request`, consumindo 0 ciclos de GPU do LLM.
+* **Requisição Legítima:** Prossegue normalmente para o controller e despacha a cadeia de execução do LangChain integrada com o Ollama (`qwen2.5:7b`).
+
+---
+
+## 🏛️ Diagrama de Fluxo
+
+```text
+[ Client Request ]
+       │
+       ▼
+ ┌──────────────┐
+ │  POST /chat  │
+ └──────┬───────┘
+        │
+        ▼
+ ┌─────────────────────────┐
+ │      ToxicityGuard      │
+ │  (TensorFlow.js / WASM) │
+ └────────────┬────────────┘
+              │
+      ┌───────┴────────────────────────┐
+      │                                │
+ [isToxic == true]             [isToxic == false]
+      │                                │
+      ▼                                ▼
+┌───────────────────────────┐   ┌───────────────────────────┐
+│ HTTP 400 Bad Request      │   │      ChatController       │
+│ - Abortado em ~25ms       │   └─────────────┬─────────────┘
+│ - 0 tokens de LLM gastos  │                 │
+│ - 0 processamento de VRAM │                 ▼
+└───────────────────────────┘   ┌───────────────────────────┐
+                                │     LangChain LCEL        │
+                                └─────────────┬─────────────┘
+                                              │
+                                              ▼
+                                ┌───────────────────────────┐
+                                │   Ollama (qwen2.5:7b)     │
+                                └─────────────┬─────────────┘
+                                              │
+                                              ▼
+                                ┌───────────────────────────┐
+                                │ HTTP 201 Created          │
+                                └───────────────────────────┘
+
 ```
 
-## Compile and run the project
+---
 
+## 🚀 Tecnologias
+
+* **Framework:** NestJS 11+ (TypeScript, ESM)
+* **Edge ML:** TensorFlow.js (`@tensorflow/tfjs` + `@tensorflow-models/toxicity`)
+* **Orquestração LLM:** LangChain.js (`@langchain/core`, `@langchain/ollama`)
+* **LLM Local:** Ollama (`qwen2.5:7b` ou `llama3.2`)
+* **Containerização:** Docker & Docker Compose
+
+---
+
+## 📋 Pré-requisitos
+
+* Node.js 20+ ou 22+ LTS
+* Docker e Docker Compose instalados
+* Instância do Ollama em execução com o modelo baixado:
 ```bash
-# development
-$ npm run start
+docker exec -it ollama ollama pull qwen2.5:7b
 
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
 ```
 
-## Run tests
+
+
+---
+
+## ⚙️ Instalação e Execução Local
+
+### 1. Clonar o repositório e instalar dependências
 
 ```bash
-# unit tests
-$ npm run test
+git clone https://github.com/seu-usuario/guardrail-llm-service.git
+cd guardrail-llm-service
+npm install
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
 ```
 
-## Deployment
+### 2. Configurar variáveis de ambiente
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+Crie um arquivo `.env` na raiz do projeto:
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+```env
+PORT=3000
+OLLAMA_BASE_URL=http://localhost:11434
+
+```
+
+### 3. Rodar em modo de desenvolvimento
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run start:dev
+
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+---
 
-## Resources
+## 🐳 Execução via Docker Compose
 
-Check out a few resources that may come in handy when working with NestJS:
+Caso o seu container do Ollama já esteja rodando na rede do host:
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+1. Garanta que a rede externa exista e o container do Ollama esteja acoplado:
+```bash
+docker network create ai-network
+docker network connect ai-network ollama
 
-## Support
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
 
-## Stay in touch
+2. Suba o container da aplicação:
+```bash
+docker compose up -d --build
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+```
 
-## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+3. Verifique os logs da aplicação:
+```bash
+docker compose logs -f api
+
+```
+
+
+
+---
+
+## 🧪 Exemplos de Requisição (cURL)
+
+### 1. Cenário Permitido (Requisição Legítima)
+
+Prompt técnico seguro que passa pela validação e é enviado ao Ollama:
+
+```bash
+curl -i -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Explique a diferença entre filas RabbitMQ e streams do Kafka de forma sucinta."
+  }'
+
+```
+
+**Resposta esperada (`HTTP/1.1 201 Created`):**
+
+```json
+{
+  "response": "RabbitMQ é projetado para filas de mensagens tradicionais e roteamento flexível, enquanto o Apache Kafka opera como um log distribuído de eventos com alta taxa de transferência e retenção temporal.",
+  "processingTimeMs": 1420.55
+}
+
+```
+
+---
+
+### 2. Cenário Bloqueado (Toxicidade / Insulto)
+
+Prompt contendo palavras ofensivas ou violações de conduta:
+
+```bash
+curl -i -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "You are a complete idiot, shut up and delete your code"
+  }'
+
+```
+
+**Resposta esperada (`HTTP/1.1 400 Bad Request`):**
+
+```json
+{
+  "statusCode": 400,
+  "message": "Prompt bloqueado por violar diretrizes de moderação.",
+  "blockedCategories": [
+    "insult",
+    "toxicity"
+  ]
+}
+
+```
+
+---
+
+### 3. Cenário Bloqueado (Ameaça / Threat)
+
+```bash
+curl -i -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "I will find you and I will hurt you"
+  }'
+
+```
+
+**Resposta esperada (`HTTP/1.1 400 Bad Request`):**
+
+```json
+{
+  "statusCode": 400,
+  "message": "Prompt bloqueado por violar diretrizes de moderação.",
+  "blockedCategories": [
+    "threat",
+    "toxicity"
+  ]
+}
+
+```
+
+---
+
+## 📊 Comparativo de Performance
+
+| Métrica | Requisição Bloqueada (Curto-Circuito) | Requisição Válida (LLM) |
+| --- | --- | --- |
+| **Camada Atingida** | NestJS Guard (TensorFlow.js) | LangChain + Ollama |
+| **Tempo de Resposta** | ~20ms - 40ms | ~1200ms - 2500ms |
+| **Consumo de VRAM/GPU** | 0% | 100% durante geração de tokens |
+| **Consumo de Tokens** | 0 tokens | $N$ tokens de entrada + saída |
+
+---
+
+## 📜 Licença
+
+Distribuído sob a licença MIT. Veja `LICENSE` para mais informações.
